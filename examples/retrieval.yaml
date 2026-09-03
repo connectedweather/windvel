@@ -1,0 +1,95 @@
+# windvel retrieval.yaml -- what the retrieval IS.
+#
+# Every threshold and method choice, shared by every site so that results
+# from different radars and campaigns stay comparable. A site file
+# (site.example.yaml) names this file and may override single keys for an
+# experiment; the overrides are logged and stamped into every output.
+#
+# Every key is required. `null` is a value, and where it is accepted it
+# means "off" -- the comment on the key says so. Units are in the key name.
+# Bump retrieval_version whenever you change a number here.
+
+config_version: 1
+retrieval_version: "1.0"
+
+corrections:                        # applied to the input variables before any stage;
+                                    #   a corrected field is saved to the output and read by
+                                    #   EVERY consumer of that variable (object contour,
+                                    #   weak-echo screen, fall speed)
+  attenuation:                      # add back path attenuation; for reflectivity that is
+                                    #   NOT already corrected
+    correct: false
+    relation: null                  # when correct: a name from windvel.tables.ATTENUATION_RELATIONS
+                                    #   (x_andsager, x_keenan, x_minimum) or an inline {band, a, b}
+    require_band_match: true        # refuse a relation for another band than the radar's
+    liquid_only: true               # apply below the melting level only
+    max_correction_db: 10           # cap on the two-way total
+
+cloud_objects:                      # select_cloud_transects: which echo is worked on
+  reflectivity_threshold_dbz: -20   # echo at or above this is cloud
+  min_area_km2: 7.0                 # true-area floor for a cloud object (gate geometry, not pixels)
+  gate_quality: []                  # per-gate screens, e.g. [{field: SNR, min: 3.0}]; [] = none.
+                                    #   a named field missing from a file is an error
+  boundary_thickness_gates: 3       # width of the object_boundaries shell
+  exclude_lowest_rays: 3            # lowest rays of each sweep never marked as boundary
+                                    #   (the beam grazes the ground there); 0 = mark every ray
+
+object_selection:                   # clouds worth retrieving, decided ONCE before any stage; null = off
+  min_span_km: 1                    # horizontal extent in the RHI plane
+  max_span_km: 40
+  min_top_km: 2.5
+  min_depth_km: 4                   # top - base
+
+sedimentation:
+  method: pid_giangrande_oklahoma2013   # pid_giangrande_oklahoma2013 | pid_giangrande_darwin2026 |
+                                        #   reflectivity_temperature (needs a freezing level: site environment)
+
+horizontal_wind:                    # get_horizontal_velocity
+  bin_size_m: 300                   # altitude bin thickness for the edge anchors
+  anchor:
+    weak_echo_dbz: [25, 30]         # gates below these may anchor; strict first, relaxed second
+                                    #   ([25] alone = single threshold)
+    min_gates: 5                    # the sample an anchor needs
+    max_elevation_deg: 70           # steeper beams do not vote (hv = u + w tan e); null = off
+    max_candidate_mps: 40           # an implied |wind| beyond this does not vote; null = off
+    robust: true                    # median (true) or mean (false)
+  fill_mirror: true                 # empty NEAR edge filled by the far half's innermost gates
+  fill_interpolate_max_gap_bins: 5  # interior gaps in an edge profile up to this many bins,
+                                    #   bounded by anchors above AND below, filled linearly in
+                                    #   altitude (each edge on its own); 0 = off
+  spike_correction:                 # smooth_edge_profile on the assembled edge profiles
+    passes: [3, 5]                  # window half-widths, run in turn; [] = off
+    shear_per_km: 12                # physical floor on the residual threshold, m/s per km
+    k_mad: 1.0                      # adaptive term, robust sigmas of the profile's residuals
+    max_fraction: 0.25              # never rewrite more of a profile than this
+  min_bin_gates: 0                  # bins thinner than this are not retrieved; 0 = off
+
+vertical_velocity:
+  compute:                          # where w EXISTS
+    max_horizontal_distance_km: 40  # per gate
+    min_elevation_deg: 10           # rays at or below get no w (1/sin e diverges)
+  error:                            # the one-sigma model, a function of elevation only
+    dVr: 0.2                        # radial velocity, m/s
+    dVsed: 2.0                      # fall speed, m/s
+    dVh2: 2.0                       # second anchor, m/s
+    dVh1_table: chivo_tracer_2022   # dVh1(elevation): a name from windvel.tables.VERTICAL_ERROR_TABLES
+                                    #   or an inline {elevation_deg: [...], dVh1: [...]}
+                                    #   deliberately conservative: larger than the edge error
+                                    #   measured against soundings on the CHIVO campaign
+  usable:                           # where w is TRUSTED (a flag, never a filter)
+    min_elevation_deg: 30
+    max_horizontal_distance_km: null   # beam-broadening cut; null = off
+    max_abs_w_mps: 60               # |w| beyond this is flagged not usable; null = off
+
+coherent_objects:                   # detect_coherent_objects, two definitions side by side
+  threshold:
+    w_mps: 6.0                      # connected |w| above this
+    min_area_km2: 0.1
+  persistence:                      # merge-tree segmentation of w/sigma
+    min_sigma: 2.0                  # a core survives this far above its saddle
+    floor_sigma: 1.0                # lowest outline level
+    min_area_km2: 0.1
+  usable:                           # per object, both detectors alike
+    min_area_fraction: 0.7          # of the object's area inside the usable domain
+    core_peak_fraction: 0.8         # the core starts at this fraction of the peak
+    core_min_gates: 3               # and grows until it holds this many gates

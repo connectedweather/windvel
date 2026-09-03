@@ -1,0 +1,44 @@
+# windvel site_<radar>.yaml -- what is true HERE.
+#
+# Paths, field names, the freezing-level sources and the run policy for one
+# radar or campaign, plus which retrieval file to use. Copy per site:
+#     windvel --config site_myradar.yaml
+#
+# Paths are used exactly as written: full spelled-out paths, no ${VAR} or ~.
+# Every key is required; `null` is a value where the comment says so.
+
+config_version: 1
+
+retrieval: retrieval.yaml           # relative to this file, or absolute
+retrieval_overrides: {}             # for an EXPERIMENT only, e.g.
+                                    #   horizontal_wind.spike_correction.k_mad: 0.0
+                                    # each key must exist in the retrieval file; every override
+                                    # is logged and stamped into the output files. The same
+                                    # override on three sites is a retrieval.yaml change.
+
+paths:
+  input_data_path: /path/to/cfradial/          # a file, or a directory searched recursively
+  file_pattern: "cfrad.*_RHI.nc"               # prefix*suffix on the file NAME (not a glob)
+  output_dir: /path/to/output/
+  log_dir: /path/to/logs/
+
+input_variables:                    # field names in the input files
+  refl_var: reflectivity
+  vr_var: velocity
+  pid_var: PID                      # particle id, for the pid_* fall-speed methods
+
+environment:                        # the freezing-level ladder, first source that answers wins;
+                                    #   null = not this source. Used by reflectivity_temperature
+                                    #   and by attenuation.liquid_only
+  temperature_field: null           # a per-gate temperature field in the file
+  sounding_dir: null                # soundings fetched in advance (windvel-fetch-soundings);
+                                    #   when set, the next two keys are required:
+  # max_sounding_age_hours: 12
+  # max_sounding_distance_km: 150
+  temperature_profile: null         # {height_km: [...], temperature_c: [...]}
+  melting_level_km: 4.5             # last resort: an explicit assumption
+
+run:
+  save_mode: full                   # full: every field on the radar; extract: inputs + windvel fields
+  overwrite_existing: true          # true: recompute an existing output from the raw scan
+  plot_summary: true                # the eight-panel summary per sweep

@@ -1,0 +1,15 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+.venv/
+.DS_Store
+
+# editor state; launch configs carry local paths
+.vscode/
+
+# local author-inspection state (CODE_PROTOCOL §9) -- never committed
+.author-inspected

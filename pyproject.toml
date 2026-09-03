@@ -1,0 +1,75 @@
+[build-system]
+requires = ["setuptools>=77"]   # PEP 639 license metadata
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "windvel"
+version = "1.0.0"
+description = "Horizontal and vertical wind retrieval from RHI radar scans, and the coherent updraft/downdraft structures found in the result"
+readme = "README.md"
+license = "BSD-3-Clause"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+authors = [{ name = "Nithin Allwayin" }]
+dependencies = [
+    "numpy>=1.21.0,<2.0",    # pyart's compiled extensions break on numpy 2.x
+    "scipy>=1.9.0",          # ndimage: labeling, erosion, merge-tree support
+    "arm-pyart>=1.15.0",     # CFRadial read/write, radar geometry
+    "opencv-python>=4.5.0",  # contour detection in select_cloud_transects
+    "matplotlib>=3.5.0",     # the summary panels (Agg backend, file output only)
+    "pyyaml>=6.0",           # the config file
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.16",
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+]
+
+[project.scripts]
+windvel = "windvel.cli:main"
+windvel-fetch-soundings = "windvel.tools.fetch_soundings:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# Real defects and import hygiene only. Two things are deliberately NOT here:
+#   - formatting (E501 long lines, E70x multi-statement lines, `ruff format`):
+#     a whole-package reformat is one large diff and belongs in its own commit
+#     the day after `git init`, where it can be reverted.
+#   - docstring rules (D): every public function moves to NumPy style in a
+#     separate pass; enabling D now fires hundreds of times and buries the
+#     defects.
+select = [
+    "F",    # pyflakes: unused imports/variables, undefined names
+    "E9",   # syntax and io errors only (the rest of E is formatting)
+    "B",    # bugbear: zip strict, raise-from, mutable defaults, ...
+    "T20",  # no print() -- library code never prints; the CLI logs
+    "I",    # import ordering
+    "UP",   # outdated syntax for the declared python
+    "RUF",  # ruff's own: ambiguous unicode, implicit optional, ...
+]
+ignore = [
+    "RUF001", "RUF002", "RUF003",  # ambiguous unicode (dashes, degree signs) in prose
+    "RUF059",  # `a, b, _ = f()` with a and b unused is a readable idiom in tests
+    "UP006", "UP035", "RUF013",    # typing modernisation: done with the mypy pass
+    "UP031",   # %-format in error messages; harmless, and the autofix is unsafe
+]
+
+[tool.ruff.lint.per-file-ignores]
+# tools/ are standalone scripts run by a person; printing IS their output.
+"src/windvel/tools/*" = ["T20"]
+# the CLI's one stderr line to the operator alongside the log
+"src/windvel/cli.py" = ["T20"]
+
