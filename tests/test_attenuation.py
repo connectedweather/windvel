@@ -134,13 +134,42 @@ def test_first_gate_gets_no_correction():
     assert out[0, 1] > 45.0
 
 
-def test_nonuniform_gate_spacing_is_refused():
-    """The path integral assumes one spacing per ray; staggered gates must
-    fail loudly, not integrate silently wrong."""
+X_ANDSAGER_A, X_ANDSAGER_B = 1.375e-4, 0.778
+AH_45DBZ = X_ANDSAGER_A * (10.0 ** 4.5) ** X_ANDSAGER_B     # dB/km one way
+
+
+def test_an_irregular_step_integrates_over_the_real_segment():
+    """A stitched range grid -- a short-pulse block followed by a long-pulse
+    block with one short step between them, the ROARS layout -- integrates
+    each gate over the path to the next gate: neither refused nor computed
+    with one assumed spacing. Pinned against the hand-written sum."""
+    r = _Radar()
+    rng = np.concatenate([np.arange(25) * 250.0,
+                          6100.0 + np.arange(25) * 250.0])    # one 100 m step
+    r.range = {'data': rng}
+    out, _ = correct_attenuation(r, _cfg(max_correction_db=1e9), _refl(),
+                                 np.zeros((NRAYS, NGATES)))
+    seg_km = np.diff(rng) / 1000.0
+    expect = np.concatenate([[0.0], 2.0 * np.cumsum(AH_45DBZ * seg_km)])
+    assert np.allclose(out[0] - 45.0, expect)
+
+
+def test_uniform_spacing_matches_the_single_spacing_form():
+    """On a uniform grid the per-segment integral equals the closed form
+    2 * (cumsum - self) * dr it generalises."""
+    out, _ = correct_attenuation(_Radar(), _cfg(max_correction_db=1e9),
+                                 _refl(), np.zeros((NRAYS, NGATES)))
+    expect = 2.0 * (np.cumsum(np.full(NGATES, AH_45DBZ)) - AH_45DBZ) * 0.25
+    assert np.allclose(out[0] - 45.0, expect)
+
+
+def test_a_range_that_does_not_increase_is_refused():
+    """A path integral over a range that steps backwards has no meaning;
+    refuse rather than integrate silently wrong."""
     r = _Radar()
     r.range = {'data': np.concatenate([np.arange(25) * 250.0,
-                                       6250.0 + np.arange(25) * 500.0])}
-    with pytest.raises(ValueError, match='not uniform'):
+                                       np.arange(25) * 250.0])}
+    with pytest.raises(ValueError, match='does not increase'):
         correct_attenuation(r, _cfg(), _refl(), np.zeros((NRAYS, NGATES)))
 
 
