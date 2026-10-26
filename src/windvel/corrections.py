@@ -68,9 +68,12 @@ def correct_attenuation(radar, cfg: Dict, refl: np.ndarray, alt_map: np.ndarray)
     Z linear), from the reflectivity itself; accumulating it along the ray
     and doubling gives the two-way correction to add at each gate:
 
-        dZ(r) = 2 * sum_{r' < r} a * Z(r')^b * dr
+        dZ(r_j) = 2 * sum_{i < j} a * Z(r_i)^b * (r_{i+1} - r_i)
 
-    exclusive of the gate's own contribution.
+    exclusive of the gate's own contribution. Each gate is weighted by the
+    path to the next gate, so a grid with one irregular step (a short-pulse
+    block stitched to a long-pulse block) integrates exactly; only a range
+    that does not increase is refused.
 
     Three things this does NOT do, all of them deliberate:
 
@@ -147,23 +150,24 @@ def correct_attenuation(radar, cfg: Dict, refl: np.ndarray, alt_map: np.ndarray)
         fl_note = f'; liquid-only below freezing level from {fl_src}'
 
     rng_km = np.asarray(radar.range['data'], dtype=float) / 1000.0
-    if rng_km.size > 1:
-        d = np.diff(rng_km)
-        dr = float(np.median(d))
-        # the path integral below assumes one gate spacing per ray; on a
-        # staggered-gate radar it would be silently wrong, so refuse instead
-        if float(np.ptp(d)) > 1e-3 * abs(dr):
-            raise InputDataError(
-                'gate spacing is not uniform (%.4g..%.4g km); the attenuation '
-                'path integral assumes a single spacing' % (d.min(), d.max()))
-    else:
-        dr = 0.0
+    # the path from each gate to the next, km. The integral below weights
+    # each gate's specific attenuation by it, so an irregular step (a
+    # short-pulse / long-pulse stitch) integrates exactly. Only a range that
+    # does not increase has no meaning as a path, and is refused.
+    seg = np.diff(rng_km)
+    if seg.size and float(seg.min()) <= 0.0:
+        raise InputDataError(
+            'range does not increase along the ray (smallest step %.4g km); '
+            'the attenuation path integral needs an increasing range'
+            % seg.min())
 
     z_lin = 10.0 ** (np.clip(np.asarray(refl, dtype=float), -30.0, 70.0) / 10.0)
     ah = np.where(np.isfinite(refl) & warm, a * z_lin ** b, 0.0)
     # loss accumulated ON THE WAY TO each gate -- exclusive of the gate's own
     # contribution -- then doubled for the two-way path
-    two_way = 2.0 * (np.cumsum(ah, axis=1) - ah) * dr
+    two_way = np.zeros_like(ah)
+    if seg.size:
+        two_way[:, 1:] = 2.0 * np.cumsum(ah[:, :-1] * seg, axis=1)
     n_capped = int((two_way > cap).sum())
     two_way = np.clip(two_way, 0.0, cap)
     if n_capped:

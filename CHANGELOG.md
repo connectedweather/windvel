@@ -5,6 +5,16 @@ Notable changes to the windvel package.
 Newest first. Each release is a `## <version> — <YYYY-MM-DD>` heading;
 unreleased work accumulates under Unreleased until it is tagged.
 
+## Unreleased
+
+### Fixed
+
+- The attenuation correction integrates each gate over the path to the next
+  gate instead of assuming one gate spacing per ray, so a stitched range
+  grid with one irregular step (ROARS short-pulse / long-pulse) is corrected
+  exactly instead of refused. Uniform grids give the same numbers as before.
+  Only a range that does not increase is refused.
+
 ## 1.0.0 — 2026-09-03
 
 The first release. Every output file carries a `windvel_version` global
